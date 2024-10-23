@@ -84,7 +84,7 @@ if uploaded_file is not None:
         data['Date/Time'] = pd.to_datetime(data['Date/Time'], format='%m/%d/%Y %I:%M %p')
 
         # Constants
-        KURTAXE_COST_PER_PERSON = 3.5
+        KURTAXE_COST_PER_PERSON = 3.2
 
         # Extract date range
         start_date = data['Date/Time'].min().strftime('%d.%m.%Y')
