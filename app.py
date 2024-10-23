@@ -46,35 +46,38 @@ st.info("Befolge die Anleitung in der Sidebar um Übernachtungsdaten aus Kyte au
 
 # Sidebar instructions
 st.sidebar.header("Anleitung")
-st.sidebar.subheader("Schritt 1: Datenexport aus Kyte")
 
-st.sidebar.markdown("""
-1. Öffne die Kyte App und navigiere zu 'Bestellungen' (Orders).
-2. Klicke oben rechts auf das Symbol zum Exportieren von Berichten (Export Reports).
-3. Wähle den gewünschten Zeitraum aus und exportiere den Bericht für 'Verkäufe' (Sales) als CSV-Datei.
-4. Die exportierte CSV-Datei wird dir per E-Mail zugeschickt.
-""")
+with st.expander("Schritt 1: Datenexport aus Kyte"):
 
-st.sidebar.subheader("Schritt 2: Datenupload")
-st.sidebar.markdown("""
-Lade die zuvor exportierte CSV-Datei hoch, um die Übernachtungsdaten und die berechneten Kurtaxen zu analysieren. 
-Stelle sicher, dass die Datei folgende Spalten enthält:
+    st.sidebar.markdown("""
+    1. Öffne die Kyte App und navigiere zu 'Bestellungen' (Orders).
+    2. Klicke oben rechts auf das Symbol zum Exportieren von Berichten (Export Reports).
+    3. Wähle den gewünschten Zeitraum aus und exportiere den Bericht für 'Verkäufe' (Sales) als CSV-Datei.
+    4. Die exportierte CSV-Datei wird dir per E-Mail zugeschickt.
+    """)
 
-- **Date/Time**: Datum und Uhrzeit der Übernachtung
-- **Total**: Gesamtbetrag der Übernachtung
-- **Items Description**: Beschreibung der Positionen (einschließlich Kurtaxe und Übernachtungen).
-""")
+with st.expander("Schritt 2: Datenupload"):
+    st.sidebar.subheader("Schritt 2: Datenupload")
+    st.sidebar.markdown("""
+    Lade die zuvor exportierte CSV-Datei hoch, um die Übernachtungsdaten und die berechneten Kurtaxen zu analysieren. 
+    Stelle sicher, dass die Datei folgende Spalten enthält:
+    
+    - **Date/Time**: Datum und Uhrzeit der Übernachtung
+    - **Total**: Gesamtbetrag der Übernachtung
+    - **Items Description**: Beschreibung der Positionen (einschließlich Kurtaxe und Übernachtungen).
+    """)
 
-uploaded_file = st.sidebar.file_uploader("Lade Deine CSV-Datei hoch", type=["csv"])
+    uploaded_file = st.sidebar.file_uploader("Lade Deine CSV-Datei hoch", type=["csv"])
 
 if uploaded_file is not None:
     st.sidebar.success("Datei erfolgreich hochgeladen!")
     data = pd.read_csv(uploaded_file)
 
-    st.sidebar.subheader("Schritt 3: Datenanalyse")
-    st.sidebar.markdown("""
-    Klicke auf den Button **Daten analysieren**, um die Berechnungen basierend auf den hochgeladenen Daten zu starten.
-    """)
+    with st.expander("Schritt 3: Datenanalyse"):
+        st.sidebar.subheader("Schritt 3: Datenanalyse")
+        st.sidebar.markdown("""
+        Klicke auf den Button **Daten analysieren**, um die Berechnungen basierend auf den hochgeladenen Daten zu starten.
+        """)
 
     if st.sidebar.button("Daten analysieren"):
         # Clean totals
