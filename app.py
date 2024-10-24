@@ -42,29 +42,32 @@ st.markdown(
     unsafe_allow_html=True
 )
 st.header("Analyse der Übernachtungen (Kyte Export)")
-st.info("Befolge die Anleitung in der Sidebar um Übernachtungsdaten aus Kyte auszuwerten.")
+
+with st.expander("Anleitung", expanded=False):
+    st.info("Befolge folgende Anleitung um Übernachtungsdaten aus Kyte auszuwerten.")
+
+    st.subheader("Schritt 1: Datenexport aus Kyte")
+    st.markdown("""
+    1. Öffne die Kyte App und navigiere zu 'Bestellungen' (Orders).
+    2. Klicke oben rechts auf das Symbol zum Exportieren von Berichten (Export Reports).
+    3. Wähle den gewünschten Zeitraum aus und exportiere den Bericht für 'Verkäufe' (Sales) als CSV-Datei.
+    4. Die exportierte CSV-Datei wird dir per E-Mail zugeschickt.
+    """)
+
+    st.subheader("Schritt 2: Datenupload")
+    st.markdown("""
+    Lade die zuvor exportierte CSV-Datei links in der Sidebar unter dem Abschnitt "Datenupload" hoch, um die Übernachtungsdaten und die berechneten Kurtaxen zu analysieren. 
+    Stelle sicher, dass die Datei folgende Spalten enthält:
+
+    - **Date/Time**: Datum und Uhrzeit der Übernachtung
+    - **Total**: Gesamtbetrag der Übernachtung
+    - **Items Description**: Beschreibung der Positionen (einschließlich Kurtaxe und Übernachtungen).
+    """)
 
 # Sidebar instructions
-st.sidebar.header("Anleitung")
+st.sidebar.header("Einstellungen")
 
-st.sidebar.subheader("Schritt 1: Datenexport aus Kyte")
-
-st.sidebar.markdown("""
-1. Öffne die Kyte App und navigiere zu 'Bestellungen' (Orders).
-2. Klicke oben rechts auf das Symbol zum Exportieren von Berichten (Export Reports).
-3. Wähle den gewünschten Zeitraum aus und exportiere den Bericht für 'Verkäufe' (Sales) als CSV-Datei.
-4. Die exportierte CSV-Datei wird dir per E-Mail zugeschickt.
-""")
-
-st.sidebar.subheader("Schritt 2: Datenupload")
-st.sidebar.markdown("""
-Lade die zuvor exportierte CSV-Datei hoch, um die Übernachtungsdaten und die berechneten Kurtaxen zu analysieren. 
-Stelle sicher, dass die Datei folgende Spalten enthält:
-
-- **Date/Time**: Datum und Uhrzeit der Übernachtung
-- **Total**: Gesamtbetrag der Übernachtung
-- **Items Description**: Beschreibung der Positionen (einschließlich Kurtaxe und Übernachtungen).
-""")
+st.sidebar.subheader("Datenupload")
 
 uploaded_file = st.sidebar.file_uploader("Lade Deine CSV-Datei hoch", type=["csv"])
 
@@ -72,161 +75,150 @@ if uploaded_file is not None:
     st.sidebar.success("Datei erfolgreich hochgeladen!")
     data = pd.read_csv(uploaded_file)
 
-    st.sidebar.subheader("Schritt 3: Datenanalyse")
-    st.sidebar.markdown("""
-    Klicke auf den Button **Daten analysieren**, um die Berechnungen basierend auf den hochgeladenen Daten zu starten.
-    """)
+    # Automatically analyze data after upload
+    data["Totals Cleaned"] = clean_total_column(data["Total"])
+    data['Date/Time'] = pd.to_datetime(data['Date/Time'], format='%m/%d/%Y %I:%M %p')
 
-    if st.sidebar.button("Daten analysieren"):
-        # Clean totals
-        data["Totals Cleaned"] = clean_total_column(data["Total"])
+    # Constants
+    KURTAXE_COST_PER_PERSON = 3.2
 
-        # Ensure the Date/Time column is in datetime format
-        data['Date/Time'] = pd.to_datetime(data['Date/Time'], format='%m/%d/%Y %I:%M %p')
+    # Extract date range
+    start_date = data['Date/Time'].min().strftime('%d.%m.%Y')
+    end_date = data['Date/Time'].max().strftime('%d.%m.%Y')
 
-        # Constants
-        KURTAXE_COST_PER_PERSON = 3.2
+    # Calculate totals
+    total_kurtaxe, kurtaxe_quantities = extract_total(data['Items Description'], 'Kurtaxe')
+    total_uebernachtungen, uebernachtungen_quantities = extract_total(data['Items Description'], 'Übernachtung')
 
-        # Extract date range
-        start_date = data['Date/Time'].min().strftime('%d.%m.%Y')
-        end_date = data['Date/Time'].max().strftime('%d.%m.%Y')
+    # Extracting other categories similarly...
+    room_types = ['Rosmarin', 'Lavendel', 'Salbei', 'Thymian', 'Dachzimmer', 'Steinsuite', 'Holzsuite']
+    room_totals = {}
 
-        # Calculate totals
-        total_kurtaxe, kurtaxe_quantities = extract_total(data['Items Description'], 'Kurtaxe')
-        total_uebernachtungen, uebernachtungen_quantities = extract_total(data['Items Description'], 'Übernachtung')
+    for room in room_types:
+        total, _ = extract_total(data['Items Description'], f'Übernachtung {room}')
+        room_totals[room] = total
 
-        # Extracting other categories similarly...
-        room_types = ['Rosmarin', 'Lavendel', 'Salbei', 'Thymian', 'Dachzimmer', 'Steinsuite', 'Holzsuite']
-        room_totals = {}
+    total_uebernachtungen_gutschein, _ = extract_total(data['Items Description'], 'Gutschein')
+    total_hundepauschale, _ = extract_total(data['Items Description'], 'Hundepauschale')
 
-        for room in room_types:
-            total, _ = extract_total(data['Items Description'], f'Übernachtung {room}')
-            room_totals[room] = total
+    # Calculate costs
+    data['Kurtaxe Cost'] = [qty * KURTAXE_COST_PER_PERSON for qty in kurtaxe_quantities]
+    data['Übernachtung Cost'] = data['Totals Cleaned'] - data['Kurtaxe Cost']
 
-        total_uebernachtungen_gutschein, _ = extract_total(data['Items Description'], 'Gutschein')
-        total_hundepauschale, _ = extract_total(data['Items Description'], 'Hundepauschale')
+    # Total costs
+    total_kurtaxe_cost = data['Kurtaxe Cost'].sum()
+    total_uebernachtungen_cost = data['Übernachtung Cost'].sum()
 
-        # Calculate costs
-        data['Kurtaxe Cost'] = [qty * KURTAXE_COST_PER_PERSON for qty in kurtaxe_quantities]
-        data['Übernachtung Cost'] = data['Totals Cleaned'] - data['Kurtaxe Cost']
+    # Display metrics using tabs for organization
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Übersicht Kennzahlen", "Aufschlüsselung nach Zimmern",
+                                            "Monatliche Übernachtungen", "Zusätzliche Leistungen", "Rohdaten"])
 
-        # Total costs
-        total_kurtaxe_cost = data['Kurtaxe Cost'].sum()
-        total_uebernachtungen_cost = data['Übernachtung Cost'].sum()
+    with tab1:
+        st.metric("Analysezeitraum", f"{start_date} - {end_date}")
+        st.subheader("Übersicht")
 
-        # Display metrics using tabs for organization
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Übersicht Kennzahlen", "Aufschlüsselung nach Zimmern",
-                                                "Monatliche Übernachtungen", "Zusätzliche Leistungen", "Rohdaten"])
+        col1, col2 = st.columns(2)
 
-        with tab1:
+        with col1:
+            st.metric("Gesamtanzahl Übernachtungen", total_uebernachtungen)
+
+        with col2:
+            st.metric("Gesamtanzahl Gäste (Kurtaxe)", total_kurtaxe)
+
+        with col1:
+            st.metric("Gesamtkosten für Übernachtungen", f"{total_uebernachtungen_cost:.2f} CHF")
+            st.metric("Gesamtkostenanteil Kurtaxe", f"{total_kurtaxe_cost:.2f} CHF")
+        with col2:
+            st.metric("Gesamtkosten für Übernachtungen und Kurtaxe",
+                      f"{total_uebernachtungen_cost + total_kurtaxe_cost:.2f} CHF")
+
+    with tab2:
+        col3, col4 = st.columns(2)
+
+        with col3:
             st.metric("Analysezeitraum", f"{start_date} - {end_date}")
-            st.subheader("Übersicht")
+        with col4:
+            st.metric("Gesamtanzahl Übernachtungen", total_uebernachtungen)
 
-            col1, col2 = st.columns(2)
+        st.subheader("Aufschlüsselung nach Zimmern")
 
-            with col1:
-                st.metric("Gesamtanzahl Übernachtungen", total_uebernachtungen)
+        # Create columns for room totals and visualization
+        col1, col2 = st.columns(2)
 
-            with col2:
-                st.metric("Gesamtanzahl Gäste (Kurtaxe)", total_kurtaxe)
+        # Using col1 for metrics display
+        with col1:
+            for room, total in room_totals.items():
+                st.metric(label=f"Anzahl Übernachtungen {room}", value=total)
 
-            with col1:
-                st.metric("Gesamtkosten für Übernachtungen", f"{total_uebernachtungen_cost:.2f} CHF")
-                st.metric("Gesamtkostenanteil Kurtaxe", f"{total_kurtaxe_cost:.2f} CHF")
-            with col2:
-                st.metric("Gesamtkosten für Übernachtungen und Kurtaxe",
-                          f"{total_uebernachtungen_cost + total_kurtaxe_cost:.2f} CHF")
+        # Using col2 for pie chart display
+        with col2:
+            # Create DataFrame for visualizations with only room totals
+            visualization_data = pd.DataFrame({
+                'Zimmertyp': list(room_totals.keys()),
+                'Anzahl Übernachtungen': list(room_totals.values())
+            })
 
-        with tab2:
-            col3, col4 = st.columns(2)
+            # Calculate the percentage for each room category
+            visualization_data['Percentage'] = (visualization_data['Anzahl Übernachtungen'] / visualization_data[
+                'Anzahl Übernachtungen'].sum()) * 100
 
-            with col3:
-                st.metric("Analysezeitraum", f"{start_date} - {end_date}")
-            with col4:
-                st.metric("Gesamtanzahl Übernachtungen", total_uebernachtungen)
-
-            st.subheader("Aufschlüsselung nach Zimmern")
-
-            # Create columns for room totals and visualization
-            col1, col2 = st.columns(2)
-
-            # Using col1 for metrics display
-            with col1:
-                for room, total in room_totals.items():
-                    st.metric(label=f"Anzahl Übernachtungen {room}", value=total)
-
-            # Using col2 for pie chart display
-            with col2:
-                # Create DataFrame for visualizations with only room totals
-                visualization_data = pd.DataFrame({
-                    'Zimmertyp': list(room_totals.keys()),
-                    'Anzahl Übernachtungen': list(room_totals.values())
-                })
-
-                # Calculate the percentage for each room category
-                visualization_data['Percentage'] = (visualization_data['Anzahl Übernachtungen'] / visualization_data[
-                    'Anzahl Übernachtungen'].sum()) * 100
-
-                # Interactive pie chart using Altair for room categories with percentage labels
-                pie_chart = (
-                    alt.Chart(visualization_data)
-                    .mark_arc(innerRadius=50)
-                    .encode(
-                        theta=alt.Theta(field='Anzahl Übernachtungen', type='quantitative'),
-                        color=alt.Color(field='Zimmertyp', type='nominal', legend=alt.Legend(title="Zimmer")),
-                        tooltip=['Zimmertyp', 'Anzahl Übernachtungen', alt.Tooltip('Percentage:Q', format='.2f')]
-                    )
-                    .properties(title="Verteilung der Übernachtungen nach Zimmertyp")
+            # Interactive pie chart using Altair for room categories with percentage labels
+            pie_chart = (
+                alt.Chart(visualization_data)
+                .mark_arc(innerRadius=50)
+                .encode(
+                    theta=alt.Theta(field='Anzahl Übernachtungen', type='quantitative'),
+                    color=alt.Color(field='Zimmertyp', type='nominal', legend=alt.Legend(title="Zimmer")),
+                    tooltip=['Zimmertyp', 'Anzahl Übernachtungen', alt.Tooltip('Percentage:Q', format='.2f')]
                 )
+                .properties(title="Verteilung der Übernachtungen nach Zimmertyp")
+            )
 
-                # Add text labels with percentages and adjust placement
-                text = pie_chart.mark_text(radiusOffset=10, size=40).encode(
-                    text=alt.Text('Percentage:Q', format='.1f'),
-                    color=alt.value('white')  # Set to black for contrast (or white if the slices are dark)
-                )
+            # Add text labels with percentages and adjust placement
+            text = pie_chart.mark_text(radiusOffset=10, size=40).encode(
+                text=alt.Text('Percentage:Q', format='.1f'),
+                color=alt.value('white')  # Set to black for contrast (or white if the slices are dark)
+            )
 
-                # Display the pie chart with text labels
-                st.altair_chart(pie_chart + text, use_container_width=True)
+            # Display the pie chart with text labels
+            st.altair_chart(pie_chart + text, use_container_width=True)
 
-        with tab3:
-            # Visualization for Übernachtungen per month
-            col1, col2 = st.columns(2)
+    with tab3:
+        # Visualization for Übernachtungen per month
+        col1, col2 = st.columns(2)
 
-            with col1:
-                st.metric("Analysezeitraum", f"{start_date} - {end_date}")
-            with col2:
-                st.metric("Gesamtanzahl Übernachtungen", total_uebernachtungen)
-
-            st.subheader("Monatliche Übernachtungen")
-
-            # Extract month and year
-            data['Monat'] = data['Date/Time'].dt.to_period('M')  # Extract month and year
-            monthly_data = data.groupby('Monat')['Items Description'].apply(
-                lambda x: extract_total(x, 'Übernachtung')[0]).reset_index()
-            monthly_data.columns = ['Monat', 'Anzahl Übernachtungen']
-
-            # Convert the 'Monat' from period to string for better labeling in the bar chart
-            monthly_data['Monat'] = monthly_data['Monat'].dt.strftime('%Y-%m')
-
-            # Interactive bar chart using Streamlit
-            st.bar_chart(monthly_data.set_index('Monat'))
-
-        with tab4:
-            # Additional information
+        with col1:
             st.metric("Analysezeitraum", f"{start_date} - {end_date}")
-            st.subheader("Zusätzliche Leistungen")
+        with col2:
+            st.metric("Gesamtanzahl Übernachtungen", total_uebernachtungen)
 
-            st.metric("Anzahl verkaufter Gutscheine", f"{total_uebernachtungen_gutschein}")
-            st.metric("Anzahl Hunde (Hundepauschale)", f"{total_hundepauschale}")
-            st.write("----------------------------")
+        st.subheader("Monatliche Übernachtungen")
 
-        with tab5:
-            st.metric("Analysezeitraum", f"{start_date} - {end_date}")
-            st.subheader("Rohdaten")
-            st.dataframe(data)
+        # Extract month and year
+        data['Monat'] = data['Date/Time'].dt.to_period('M')  # Extract month and year
+        monthly_data = data.groupby('Monat')['Items Description'].apply(
+            lambda x: extract_total(x, 'Übernachtung')[0]).reset_index()
+        monthly_data.columns = ['Monat', 'Anzahl Übernachtungen']
 
-else:
-    st.sidebar.warning("Bitte lade eine CSV-Datei hoch.")
+        # Convert the 'Monat' from period to string for better labeling in the bar chart
+        monthly_data['Monat'] = monthly_data['Monat'].dt.strftime('%Y-%m')
+
+        # Interactive bar chart using Streamlit
+        st.bar_chart(monthly_data.set_index('Monat'))
+
+    with tab4:
+        # Additional information
+        st.metric("Analysezeitraum", f"{start_date} - {end_date}")
+        st.subheader("Zusätzliche Leistungen")
+
+        st.metric("Anzahl verkaufter Gutscheine", f"{total_uebernachtungen_gutschein}")
+        st.metric("Anzahl Hunde (Hundepauschale)", f"{total_hundepauschale}")
+        st.write("----------------------------")
+
+    with tab5:
+        st.metric("Analysezeitraum", f"{start_date} - {end_date}")
+        st.subheader("Rohdaten")
+        st.dataframe(data)
 
 # Add a copyright footer at the bottom of the app
 st.markdown("""
